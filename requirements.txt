@@ -1,0 +1,39 @@
+# Environment: venv `gerbera` (Python 3.12), see README / setup notes.
+# PyTorch (CUDA 12.8 wheels):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+torch>=2.4
+torchvision
+
+# Generative models (Qwen-Image-2.1 needs diffusers from git + transformers>=5.17)
+diffusers @ git+https://github.com/huggingface/diffusers
+transformers>=5.17
+accelerate
+safetensors
+huggingface_hub
+sentencepiece
+protobuf
+tokenizers
+peft
+bitsandbytes
+kernels>=0.11.1
+
+# Wan2.2 (original codebase) extras
+easydict
+ftfy
+imageio
+imageio-ffmpeg
+einops
+
+# Data / anomaly detection
+numpy
+pandas
+pillow
+tifffile
+opencv-python
+scikit-learn
+scikit-image
+scipy
+matplotlib
+tqdm
+omegaconf
+wandb
