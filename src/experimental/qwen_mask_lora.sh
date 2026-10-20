@@ -10,6 +10,7 @@
 # Usage:
 #   qsub -o logs/qwen_mask_lora/ src/experimental/qwen_mask_lora.sh
 #   qsub -v DATA=outputs/realiad_mask_pairs/<name>,OUT=weights/qwen_mask_lora/<name>,STEPS=10000 ...
+#   1 GPU: qsub -q rt_HG -v NGPU=1,VAL_EPOCHS=1 -o logs/qwen_mask_lora/ src/experimental/qwen_mask_lora.sh
 set -euo pipefail
 
 ROOT=${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/../.." && pwd)}
@@ -21,7 +22,9 @@ OUT=${OUT:-weights/qwen_mask_lora/pilot50}
 VAL_IMAGE=${VAL_IMAGE:-$DATA/$(head -1 "$DATA/holdout.jsonl" | python -c "import json,sys;print(json.load(sys.stdin)['image'])")}
 mkdir -p "$OUT"
 
-accelerate launch --multi_gpu --num_processes "${NGPU:-8}" --num_machines 1 --mixed_precision bf16 \
+NGPU=${NGPU:-8}
+MULTI_GPU=$([ "$NGPU" -gt 1 ] && echo --multi_gpu || true)
+accelerate launch $MULTI_GPU --num_processes "$NGPU" --num_machines 1 --mixed_precision bf16 \
     src/experimental/train_dreambooth_lora_qwenimage21_img2img.py \
     --pretrained_model_name_or_path /groups/gch51615/shared/image/Qwen-Image-2.1 \
     --dataset_name "$DATA" \
