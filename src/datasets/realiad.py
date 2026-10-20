@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import *
 
@@ -56,6 +57,8 @@ class RealIAD(Dataset):
 
         # # load files from the dataset
         self.img_files, self.labels_str, self.masks = self.get_files()
+        if self.split == 'test':
+            self.relabel_empty_masks()
         self.labels = []
         for label in self.labels_str:
             if label == NORMAL_PREFIX:
@@ -87,10 +90,10 @@ class RealIAD(Dataset):
             img = img.convert('RGB')
         
         inputs["clsname"] = cls_name
-        inputs["clslabel"] = 0 # TODO: # REALIAD_CLASSES.index(cls_name)
+        inputs["clslabel"] = REALIAD_CLASSES.index(cls_name)
         inputs["path"] = str(img_file)
         inputs["view"] = int(str(img_file).split("_")[-2].split("C")[-1]) - 1
-        sample = self.custom_transforms(img)
+        sample = self.custom_transforms(img) if self.custom_transforms is not None else F.to_tensor(img)
         
         if self.split == 'train' or self.split == 'val':
             inputs["img"] = sample
@@ -110,13 +113,27 @@ class RealIAD(Dataset):
                     with open(mask_file, 'rb') as f:
                         mask = Image.open(f)
                         mask = mask.convert('L')
-                mask = self.mask_transform(mask)
+                # GT masks are anti-aliased (0-255); binarize so any annotated pixel counts as anomalous
+                mask = (self.mask_transform(mask) > 0).long()
                 inputs["mask"] = mask
             return inputs
                 
     def __len__(self):
         return len(self.img_files)
     
+    def relabel_empty_masks(self):
+        """Labels are per view: a view is anomalous only if its own GT mask has an annotated pixel.
+        A few views are labelled anomalous in the meta file but have an all-zero mask; treat them as normal."""
+        anom = [i for i, label in enumerate(self.labels_str) if label != NORMAL_PREFIX]
+        def is_empty(i):
+            with Image.open(self.masks[i]) as m:
+                return m.convert('L').getbbox() is None
+        with ThreadPoolExecutor(16) as ex:
+            empty = [i for i, e in zip(anom, ex.map(is_empty, anom)) if e]
+        for i in empty:
+            self.labels_str[i] = NORMAL_PREFIX
+            self.masks[i] = None
+
     def get_files(self):
         # First load meta file 
         import json
@@ -132,7 +149,7 @@ class RealIAD(Dataset):
                 raise ValueError(f"No training files found for category {self.category} in meta file.")
             files = [os.path.join(self.data_root, self.category, self.category, file["image_path"]) for file in train_files]
             labels = [file["anomaly_class"] for file in train_files]
-            mask_paths = [os.path.join(self.data_root, self.category, self.category, file["mask_path"]) for file in train_files if file["mask_path"]]
+            mask_paths = [os.path.join(self.data_root, self.category, self.category, file["mask_path"]) if file["mask_path"] else None for file in train_files]
         elif self.split == "test":
             test_files = meta_data.get('test', None)
             if not test_files:
